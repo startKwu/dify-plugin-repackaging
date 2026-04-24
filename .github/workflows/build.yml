@@ -31,24 +31,16 @@ jobs:
           echo "plugin_version = ${{ inputs.plugin_version }}"
           echo "platform_arm   = ${{ inputs.platform_arm }}"
 
-      # - name: Resolve platform
-      #   run: |
-      #     if [ "${{ inputs.platform_arm }}" = "true" ]; then
-      #       echo "PIP_PLATFORM=manylinux_2_17_aarch64" >> "$GITHUB_ENV"
-      #       echo "PACKAGE_SUFFIX=offline-arm" >> "$GITHUB_ENV"
-      #     else
-      #       echo "PIP_PLATFORM=manylinux_2_17_x86_64" >> "$GITHUB_ENV"
-      #       echo "PACKAGE_SUFFIX=offline" >> "$GITHUB_ENV"
-      #     fi
       - name: Resolve platform
         run: |
           if [ "${{ inputs.platform_arm }}" = "true" ]; then
-            echo "PIP_PLATFORM=manylinux2014_aarch64" >> "$GITHUB_ENV"   # 改格式
+            echo "PIP_PLATFORM=manylinux_2_17_aarch64" >> "$GITHUB_ENV"
             echo "PACKAGE_SUFFIX=offline-arm" >> "$GITHUB_ENV"
           else
-            echo "PIP_PLATFORM=manylinux2014_x86_64" >> "$GITHUB_ENV"   # 改格式
+            echo "PIP_PLATFORM=manylinux_2_17_x86_64" >> "$GITHUB_ENV"
             echo "PACKAGE_SUFFIX=offline" >> "$GITHUB_ENV"
           fi
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -66,7 +58,7 @@ jobs:
           ./plugin_repackaging.sh \
           -p ${{ env.PIP_PLATFORM }} \
           -s ${{ env.PACKAGE_SUFFIX }} \
-          -R \ 
+
           market \
           "${{ github.event.inputs.plugin_author }}" \
           "${{ github.event.inputs.plugin_name }}" \
