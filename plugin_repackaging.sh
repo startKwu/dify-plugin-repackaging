@@ -329,6 +329,12 @@ PY
 				echo "✓ requirements.txt fixed"
 			fi
 		fi
+		# 修复 moviepy
+		if grep -q "moviepy==1.0.3" requirements.txt; then
+			echo "⚠️  Detected moviepy==1.0.3, fixing to moviepy==2.2.0"
+			sed -i 's/moviepy==1.0.3/moviepy==2.2.0/g' requirements.txt
+			echo "✓ moviepy fixed"
+		fi
 	fi
 	[ ! -f "requirements.txt" ] && echo "✗ Error: requirements.txt not found" && exit 1
 
