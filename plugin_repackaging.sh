@@ -318,7 +318,18 @@ PY
 	elif [ -f "requirements.txt" ]; then
 		echo "✓ Using existing requirements.txt"
 	fi
-
+	# ============================================
+	# 修复 ARM64 平台的 pandas 版本问题
+	# ============================================
+	if [[ "$RAW_PLATFORM" == *"aarch64"* ]]; then
+		if [ -f "requirements.txt" ]; then
+			if grep -q "pandas~=2.3.3" requirements.txt; then
+				echo "⚠️  Detected pandas~=2.3.3 on ARM64, fixing to pandas==2.3.2"
+				sed -i 's/pandas~=2.3.3/pandas==2.3.2/g' requirements.txt
+				echo "✓ requirements.txt fixed"
+			fi
+		fi
+	fi
 	[ ! -f "requirements.txt" ] && echo "✗ Error: requirements.txt not found" && exit 1
 
 	# ============================================
