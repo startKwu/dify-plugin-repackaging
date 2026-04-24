@@ -58,7 +58,6 @@ jobs:
           ./plugin_repackaging.sh \
           -p ${{ env.PIP_PLATFORM }} \
           -s ${{ env.PACKAGE_SUFFIX }} \
-
           market \
           "${{ github.event.inputs.plugin_author }}" \
           "${{ github.event.inputs.plugin_name }}" \
