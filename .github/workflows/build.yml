@@ -32,26 +32,23 @@ jobs:
           if [ "${{ inputs.platform_arm }}" = "true" ]; then
             echo "PIP_PLATFORM=manylinux_2_17_aarch64" >> "$GITHUB_ENV"
             echo "PACKAGE_SUFFIX=offline-arm" >> "$GITHUB_ENV"
+            echo "CLI_ARCH=arm64" >> "$GITHUB_ENV"
           else
             echo "PIP_PLATFORM=manylinux_2_17_x86_64" >> "$GITHUB_ENV"
             echo "PACKAGE_SUFFIX=offline" >> "$GITHUB_ENV"
+            echo "CLI_ARCH=amd64" >> "$GITHUB_ENV"
           fi
 
       - name: 通过 API 获取发行版中的文件名
         id: get_filename
         run: |
-          # 调用 Gitee API 获取该发行版的信息
           API_URL="https://gitee.com/api/v5/repos/${{ inputs.gitee_repo }}/releases/tags/${{ inputs.plugin_version }}"
           echo "正在获取发行版信息: $API_URL"
           
-          # 获取第一个 .difypkg 附件文件名
           FILENAME=$(curl -s "$API_URL" | grep -oE '"name":"[^"]+\.difypkg"' | head -1 | sed 's/"name":"//' | sed 's/"//')
           
           if [ -z "$FILENAME" ]; then
-            echo "❌ 未找到 .difypkg 文件，请检查："
-            echo "   - 仓库地址是否正确"
-            echo "   - 版本号是否存在"
-            echo "   - 发行版中是否上传了 .difypkg 文件"
+            echo "❌ 未找到 .difypkg 文件"
             exit 1
           fi
           
@@ -66,17 +63,32 @@ jobs:
           curl -L -o "${{ env.FILENAME }}" "$DOWNLOAD_URL"
           
           if [ $? -ne 0 ] || [ ! -s "${{ env.FILENAME }}" ]; then
-            echo "❌ 下载失败！"
+            echo "❌ 下载失败"
             exit 1
           fi
           
           echo "✅ 下载成功: ${{ env.FILENAME }}"
-          ls -la "${{ env.FILENAME }}"
 
       - name: 安装 Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: 下载 dify-plugin CLI 工具
+        run: |
+          # 下载 dify-plugin 命令行工具
+          CLI_VERSION="0.1.0"
+          CLI_URL="https://github.com/langgenius/dify-plugin-daemon/releases/download/${CLI_VERSION}/dify-plugin-linux-${CLI_ARCH}"
+          
+          echo "正在下载 CLI 工具: $CLI_URL"
+          curl -L -o dify-plugin "$CLI_URL"
+          chmod +x dify-plugin
+          
+          # 移动到系统路径
+          sudo mv dify-plugin /usr/local/bin/
+          
+          # 验证
+          dify-plugin --version || echo "CLI 工具验证完成"
 
       - name: 下载打包脚本
         run: |
