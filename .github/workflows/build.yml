@@ -4,29 +4,30 @@ on:
   workflow_dispatch:
     inputs:
       gitee_repo:
-        description: "Gitee 仓库地址（如：https://gitee.com/yourname/dify-plugin-database）"
+        description: "Gitee 仓库地址（如：strakMan/dify-plugin-database）"
         required: true
         type: string
       plugin_version:
-        description: "插件版本号（如：0.0.11，留空则拉取最新代码）"
-        required: false
+        description: "插件版本号（如：0.0.11）"
+        required: true
         type: string
       platform_arm:
-        description: "Use ARM platform (true = manylinux_2_17_aarch64, false = manylinux_2_17_x86_64)"
+        description: "Use ARM platform (true = aarch64, false = x86_64)"
         required: true
         default: "false"
+        type: string
 
 jobs:
   repackage:
     runs-on: ubuntu-latest
     steps:
-      - name: Print workflow inputs
+      - name: 打印输入参数
         run: |
-          echo "gitee_repo     = ${{ inputs.gitee_repo }}"
-          echo "plugin_version = ${{ inputs.plugin_version }}"
-          echo "platform_arm   = ${{ inputs.platform_arm }}"
+          echo "Gitee 仓库: ${{ inputs.gitee_repo }}"
+          echo "版本号: ${{ inputs.plugin_version }}"
+          echo "ARM 平台: ${{ inputs.platform_arm }}"
 
-      - name: Resolve platform
+      - name: 解析平台架构
         run: |
           if [ "${{ inputs.platform_arm }}" = "true" ]; then
             echo "PIP_PLATFORM=manylinux_2_17_aarch64" >> "$GITHUB_ENV"
@@ -36,91 +37,66 @@ jobs:
             echo "PACKAGE_SUFFIX=offline" >> "$GITHUB_ENV"
           fi
 
-      - name: Set up Python 3.12
+      - name: 通过 API 获取发行版中的文件名
+        id: get_filename
+        run: |
+          # 调用 Gitee API 获取该发行版的信息
+          API_URL="https://gitee.com/api/v5/repos/${{ inputs.gitee_repo }}/releases/tags/${{ inputs.plugin_version }}"
+          echo "正在获取发行版信息: $API_URL"
+          
+          # 获取第一个 .difypkg 附件文件名
+          FILENAME=$(curl -s "$API_URL" | grep -oE '"name":"[^"]+\.difypkg"' | head -1 | sed 's/"name":"//' | sed 's/"//')
+          
+          if [ -z "$FILENAME" ]; then
+            echo "❌ 未找到 .difypkg 文件，请检查："
+            echo "   - 仓库地址是否正确"
+            echo "   - 版本号是否存在"
+            echo "   - 发行版中是否上传了 .difypkg 文件"
+            exit 1
+          fi
+          
+          echo "找到文件: $FILENAME"
+          echo "FILENAME=$FILENAME" >> $GITHUB_ENV
+
+      - name: 从 Gitee 下载插件文件
+        run: |
+          DOWNLOAD_URL="https://gitee.com/${{ inputs.gitee_repo }}/releases/download/${{ inputs.plugin_version }}/${{ env.FILENAME }}"
+          echo "下载地址: $DOWNLOAD_URL"
+          
+          curl -L -o "${{ env.FILENAME }}" "$DOWNLOAD_URL"
+          
+          if [ $? -ne 0 ] || [ ! -s "${{ env.FILENAME }}" ]; then
+            echo "❌ 下载失败！"
+            exit 1
+          fi
+          
+          echo "✅ 下载成功: ${{ env.FILENAME }}"
+          ls -la "${{ env.FILENAME }}"
+
+      - name: 安装 Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Clone plugin repo from Gitee
+      - name: 下载打包脚本
         run: |
-          REPO_URL="${{ inputs.gitee_repo }}"
-          
-          # 处理 Gitee URL，支持带 .git 和不带的
-          if [[ ! "$REPO_URL" == *.git ]]; then
-            REPO_URL="${REPO_URL}.git"
-          fi
-          
-          # 克隆仓库
-          if [ -n "${{ inputs.plugin_version }}" ]; then
-            # 如果指定了版本号，克隆对应 tag 或 branch
-            git clone --depth 1 --branch "${{ inputs.plugin_version }}" "$REPO_URL" plugin-source
-          else
-            # 否则克隆最新代码
-            git clone --depth 1 "$REPO_URL" plugin-source
-          fi
-          
-          if [ $? -ne 0 ]; then
-            echo "❌ 克隆仓库失败！请检查仓库地址和版本号是否正确"
-            exit 1
-          fi
-          
-          echo "✅ 成功克隆仓库到 plugin-source 目录"
-          ls -la plugin-source/
-
-      - name: Check plugin structure
-        run: |
-          cd plugin-source
-          
-          # 检查必要文件是否存在
-          if [ ! -f "manifest.yaml" ]; then
-            echo "❌ 缺少 manifest.yaml 文件，这不是一个合法的 Dify 插件"
-            exit 1
-          fi
-          
-          # 从 manifest.yaml 读取插件信息（如果用户没传的话）
-          if [ -z "$PLUGIN_AUTHOR" ]; then
-            PLUGIN_AUTHOR=$(grep -E "^author:" manifest.yaml | awk '{print $2}' | tr -d '"' | tr -d "'")
-            echo "从 manifest.yaml 读取到 author: $PLUGIN_AUTHOR"
-          fi
-          
-          if [ -z "$PLUGIN_NAME" ]; then
-            PLUGIN_NAME=$(grep -E "^name:" manifest.yaml | awk '{print $2}' | tr -d '"' | tr -d "'")
-            echo "从 manifest.yaml 读取到 name: $PLUGIN_NAME"
-          fi
-          
-          if [ -z "$PLUGIN_VERSION" ]; then
-            PLUGIN_VERSION=$(grep -E "^version:" manifest.yaml | awk '{print $2}' | tr -d '"' | tr -d "'")
-            echo "从 manifest.yaml 读取到 version: $PLUGIN_VERSION"
-          fi
-          
-          echo "PLUGIN_AUTHOR=$PLUGIN_AUTHOR" >> $GITHUB_ENV
-          echo "PLUGIN_NAME=$PLUGIN_NAME" >> $GITHUB_ENV
-          echo "PLUGIN_VERSION=$PLUGIN_VERSION" >> $GITHUB_ENV
-
-      - name: Make plugin_repackaging.sh executable
-        run: |
-          # 检查 plugin_repackaging.sh 是否存在，不存在则从 GitHub 下载
-          if [ ! -f "./plugin_repackaging.sh" ]; then
-            echo "下载 plugin_repackaging.sh 脚本..."
-            curl -O https://raw.githubusercontent.com/junjiem/dify-plugin-repackaging/main/plugin_repackaging.sh
-          fi
+          curl -O https://raw.githubusercontent.com/junjiem/dify-plugin-repackaging/main/plugin_repackaging.sh
           chmod +x ./plugin_repackaging.sh
 
-      - name: Run plugin repackaging script
+      - name: 执行重打包
         run: |
-          # 使用本地目录模式打包
           PIP_MIRROR_URL=https://pypi.org/simple \
           ./plugin_repackaging.sh \
           -p ${{ env.PIP_PLATFORM }} \
           -s ${{ env.PACKAGE_SUFFIX }} \
           local \
-          ./plugin-source
+          "${{ env.FILENAME }}"
 
-      - name: Find repackaged artifact
+      - name: 找到重打包后的文件
         run: |
           ARTIFACT_PATH=$(find . -type f -name "*-${PACKAGE_SUFFIX}.difypkg" | head -n 1)
           if [ -z "$ARTIFACT_PATH" ]; then
-            echo "❌ 没有找到 *-${PACKAGE_SUFFIX}.difypkg 打包文件"
+            echo "❌ 未找到重打包后的文件"
             exit 1
           fi
           
@@ -128,7 +104,7 @@ jobs:
           echo "ARTIFACT_NAME=$(basename "$ARTIFACT_PATH")" >> $GITHUB_ENV
           echo "✅ 打包完成: $ARTIFACT_NAME"
 
-      - name: Upload artifact
+      - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_NAME }}
