@@ -1,4 +1,4 @@
-name: Repackage Dify Plugin
+name: 从Dify官方仓库 拉取插件并打包为离线包
 
 on:
   workflow_dispatch:
