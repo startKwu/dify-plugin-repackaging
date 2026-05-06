@@ -73,8 +73,8 @@ jobs:
           "${{ github.event.inputs.asset_name }}"
         
         # 如果插件仓库是私有的，需要取消下面两行的注释，并在仓库 Secrets 中添加 GH_TOKEN
-        # env:
-        #   GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+         env:
+           GITHUB_TOKEN: 123456
 
       # ========== 7. 查找生成的离线包文件 ==========
       - name: 查找生成的离线包
