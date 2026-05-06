@@ -1,18 +1,22 @@
-name: 从 Gitee Release 拉取插件并打包为离线包 
+name: 从 Gitee Release 拉取插件并打包为离线包
 
 on:
   workflow_dispatch:
     inputs:
       gitee_repo:
-        description: "Gitee 仓库地址（如：strakMan/dify-plugin-database）"
+        description: "Gitee 仓库地址 (格式: owner/repo，例如: startKwu/dify-plugin-tools-dbquery)"
         required: true
         type: string
-      plugin_version:
-        description: "插件版本号（如：0.0.11）"
+      gitee_tag:
+        description: "Gitee Release 版本号 (例如: 0.0.12 或 v1.0.0)"
+        required: true
+        type: string
+      asset_name:
+        description: "插件文件名 (例如: db_query.difypkg)"
         required: true
         type: string
       platform_arm:
-        description: "Use ARM platform (true = aarch64, false = x86_64)"
+        description: "是否打包 ARM 架构版本 (true=ARM64, false=x86_64)"
         required: true
         default: "false"
         type: string
@@ -21,102 +25,73 @@ jobs:
   repackage:
     runs-on: ubuntu-latest
     steps:
-      - name: 打印输入参数
+      # ========== 1. 打印用户输入的参数 ==========
+      - name: 打印输入的参数
         run: |
-          echo "Gitee 仓库: ${{ inputs.gitee_repo }}"
-          echo "版本号: ${{ inputs.plugin_version }}"
-          echo "ARM 平台: ${{ inputs.platform_arm }}"
+          echo "Gitee 仓库 = ${{ inputs.gitee_repo }}"
+          echo "Release 版本 = ${{ inputs.gitee_tag }}"
+          echo "插件文件名 = ${{ inputs.asset_name }}"
+          echo "ARM 架构 = ${{ inputs.platform_arm }}"
 
-      - name: 解析平台架构
+      # ========== 2. 根据是否 ARM 确定 pip 平台和后缀 ==========
+      - name: 确定目标平台和文件后缀
         run: |
           if [ "${{ inputs.platform_arm }}" = "true" ]; then
             echo "PIP_PLATFORM=manylinux_2_17_aarch64" >> "$GITHUB_ENV"
             echo "PACKAGE_SUFFIX=offline-arm" >> "$GITHUB_ENV"
-            echo "CLI_ARCH=arm64" >> "$GITHUB_ENV"
+            echo "目标平台: ARM64 (aarch64)"
           else
             echo "PIP_PLATFORM=manylinux_2_17_x86_64" >> "$GITHUB_ENV"
             echo "PACKAGE_SUFFIX=offline" >> "$GITHUB_ENV"
-            echo "CLI_ARCH=amd64" >> "$GITHUB_ENV"
+            echo "目标平台: x86_64"
           fi
 
-      - name: 通过 API 获取发行版中的文件名
-        id: get_filename
-        run: |
-          API_URL="https://gitee.com/api/v5/repos/${{ inputs.gitee_repo }}/releases/tags/${{ inputs.plugin_version }}"
-          echo "正在获取发行版信息: $API_URL"
-          
-          FILENAME=$(curl -s "$API_URL" | grep -oE '"name":"[^"]+\.difypkg"' | head -1 | sed 's/"name":"//' | sed 's/"//')
-          
-          if [ -z "$FILENAME" ]; then
-            echo "❌ 未找到 .difypkg 文件"
-            exit 1
-          fi
-          
-          echo "找到文件: $FILENAME"
-          echo "FILENAME=$FILENAME" >> $GITHUB_ENV
+      # ========== 3. 检出当前仓库（获取 plugin_repackaging.sh 脚本） ==========
+      - name: 检出代码仓库
+        uses: actions/checkout@v4
 
-      - name: 从 Gitee 下载插件文件
-        run: |
-          DOWNLOAD_URL="https://gitee.com/${{ inputs.gitee_repo }}/releases/download/${{ inputs.plugin_version }}/${{ env.FILENAME }}"
-          echo "下载地址: $DOWNLOAD_URL"
-          
-          curl -L -o "${{ env.FILENAME }}" "$DOWNLOAD_URL"
-          
-          if [ $? -ne 0 ] || [ ! -s "${{ env.FILENAME }}" ]; then
-            echo "❌ 下载失败"
-            exit 1
-          fi
-          
-          echo "✅ 下载成功: ${{ env.FILENAME }}"
-
-      - name: 安装 Python 3.12
+      # ========== 4. 设置 Python 环境 ==========
+      - name: 设置 Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: 下载 dify-plugin CLI 工具
-        run: |
-          # 下载 dify-plugin 命令行工具
-          CLI_VERSION="0.1.0"
-          CLI_URL="https://github.com/langgenius/dify-plugin-daemon/releases/download/${CLI_VERSION}/dify-plugin-linux-${CLI_ARCH}"
-          
-          echo "正在下载 CLI 工具: $CLI_URL"
-          curl -L -o dify-plugin "$CLI_URL"
-          chmod +x dify-plugin
-          
-          # 移动到系统路径
-          sudo mv dify-plugin /usr/local/bin/
-          
-          # 验证
-          dify-plugin --version || echo "CLI 工具验证完成"
+      # ========== 5. 给打包脚本添加执行权限 ==========
+      - name: 添加脚本执行权限
+        run: chmod +x ./plugin_repackaging.sh
 
-      - name: 下载打包脚本
-        run: |
-          curl -O https://raw.githubusercontent.com/junjiem/dify-plugin-repackaging/main/plugin_repackaging.sh
-          chmod +x ./plugin_repackaging.sh
-
-      - name: 执行重打包
+      # ========== 6. 核心：从 Gitee Release 下载插件并重打包 ==========
+      - name: 从 Gitee Release 拉取插件并打包
         run: |
           PIP_MIRROR_URL=https://pypi.org/simple \
           ./plugin_repackaging.sh \
           -p ${{ env.PIP_PLATFORM }} \
           -s ${{ env.PACKAGE_SUFFIX }} \
-          local \
-          "${{ env.FILENAME }}"
+          gitee \
+          "${{ github.event.inputs.gitee_repo }}" \
+          "${{ github.event.inputs.gitee_tag }}" \
+          "${{ github.event.inputs.asset_name }}"
+        
+        # 如果插件仓库是私有的，需要设置 GITEE_TOKEN 环境变量
+        # 并在仓库 Secrets 中添加 GITEE_TOKEN
+        # env:
+        #   GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
 
-      - name: 找到重打包后的文件
+      # ========== 7. 查找生成的离线包文件 ==========
+      - name: 查找生成的离线包
         run: |
           ARTIFACT_PATH=$(find . -type f -name "*-${PACKAGE_SUFFIX}.difypkg" | head -n 1)
           if [ -z "$ARTIFACT_PATH" ]; then
-            echo "❌ 未找到重打包后的文件"
+            echo "错误：没有找到 *-${PACKAGE_SUFFIX}.difypkg 文件！"
             exit 1
           fi
           
+          echo "找到离线包: $ARTIFACT_PATH"
           echo "ARTIFACT_PATH=$ARTIFACT_PATH" >> $GITHUB_ENV
           echo "ARTIFACT_NAME=$(basename "$ARTIFACT_PATH")" >> $GITHUB_ENV
-          echo "✅ 打包完成: $ARTIFACT_NAME"
 
-      - name: 上传产物
+      # ========== 8. 上传打包结果，供下载 ==========
+      - name: 上传离线包作为工作流产物
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_NAME }}
