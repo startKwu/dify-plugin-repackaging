@@ -1,4 +1,4 @@
-name: Repackage Dify Plugin from Gitee
+name: 从 Gitee Release 拉取插件并打包为离线包 
 
 on:
   workflow_dispatch:
