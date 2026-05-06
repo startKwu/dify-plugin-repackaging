@@ -1,12 +1,17 @@
 #!/bin/bash
 # author: Junjie.M
 
+# 在第 6 行左右，添加 Gitee 的默认配置
 DEFAULT_GITHUB_API_URL=https://github.com
+DEFAULT_GITEE_API_URL=https://gitee.com
 DEFAULT_MARKETPLACE_API_URL=https://marketplace.dify.ai
 DEFAULT_PIP_MIRROR_URL=https://mirrors.aliyun.com/pypi/simple
 GITHUB_API_URL=https://github.com
+GITEE_API_URL=https://gitee.com
 
+# 在第 10 行左右，添加 Gitee 的环境变量
 GITHUB_API_URL="${GITHUB_API_URL:-$DEFAULT_GITHUB_API_URL}"
+GITEE_API_URL="${GITEE_API_URL:-$DEFAULT_GITEE_API_URL}"
 MARKETPLACE_API_URL="${MARKETPLACE_API_URL:-$DEFAULT_MARKETPLACE_API_URL}"
 PIP_MIRROR_URL="${PIP_MIRROR_URL:-$DEFAULT_PIP_MIRROR_URL}"
 
@@ -100,6 +105,48 @@ github(){
 	if [[ $? -ne 0 ]]; then
 		echo "✗ Error: Download failed"
 		echo "  Please check the GitHub repo, release title, and asset name"
+		exit 1
+	fi
+
+	DOWNLOADED_SIZE=$(du -h "${PLUGIN_PACKAGE_PATH}" | cut -f1)
+	echo "✓ Downloaded successfully (${DOWNLOADED_SIZE})"
+
+	repackage ${PLUGIN_PACKAGE_PATH}
+}
+
+gitee(){
+	if [[ -z "$2" || -z "$3" || -z "$4" ]]; then
+		echo ""
+		echo "Usage: "$0" gitee [Gitee repo] [Release title] [Assets name (include .difypkg suffix)]"
+		echo "Example:"
+		echo "	"$0" gitee startKwu/dify-plugin-tools-dbquery 0.0.12 db_query.difypkg"
+		echo "	"$0" gitee https://gitee.com/startKwu/dify-plugin-tools-dbquery 0.0.12 db_query.difypkg"
+		echo ""
+		exit 1
+	fi
+	GITEE_REPO=$2
+	if [[ "${GITEE_REPO}" != "${GITEE_API_URL}"* ]]; then
+		GITEE_REPO="${GITEE_API_URL}/${GITEE_REPO}"
+	fi
+	RELEASE_TITLE=$3
+	ASSETS_NAME=$4
+	PLUGIN_NAME="${ASSETS_NAME%.difypkg}"
+	PLUGIN_PACKAGE_PATH=${CURR_DIR}/${PLUGIN_NAME}-${RELEASE_TITLE}.difypkg
+	PLUGIN_DOWNLOAD_URL=${GITEE_REPO}/releases/download/${RELEASE_TITLE}/${ASSETS_NAME}
+
+	echo ""
+	echo "=========================================="
+	echo "Downloading from Gitee"
+	echo "=========================================="
+	echo "Repository: ${GITEE_REPO}"
+	echo "Release: ${RELEASE_TITLE}"
+	echo "Asset: ${ASSETS_NAME}"
+	echo "URL: ${PLUGIN_DOWNLOAD_URL}"
+
+	curl -L -o ${PLUGIN_PACKAGE_PATH} ${PLUGIN_DOWNLOAD_URL}
+	if [[ $? -ne 0 ]]; then
+		echo "✗ Error: Download failed"
+		echo "  Please check the Gitee repo, release title, and asset name"
 		exit 1
 	fi
 
@@ -451,6 +498,9 @@ case "$1" in
 	;;
 	'github')
 	github $@
+	;;
+	'gitee')
+	gitee $@
 	;;
 	'local')
 	_local $@
