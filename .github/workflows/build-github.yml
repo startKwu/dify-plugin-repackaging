@@ -1,80 +1,96 @@
-name: Repackage Dify Plugin
+name: 从 GitHub Release 拉取插件并打包为离线包
 
 on:
   workflow_dispatch:
     inputs:
-      plugin_author:
-        description: "plugin author"
+      github_repo:
+        description: "GitHub 仓库地址 (格式: owner/repo，例如: langgenius/dify-plugin-agent)"
         required: true
         type: string
-      plugin_name:
-        description: "plugin name"
+      github_tag:
+        description: "Git Release 版本号 (例如: 0.0.9 或 v1.0.0)"
         required: true
         type: string
-      plugin_version:
-        description: "plugin version"
+      asset_name:
+        description: "插件文件名 (例如: agent.difypkg)"
         required: true
         type: string
       platform_arm:
-        description: "Use ARM platform (true = manylinux_2_17_aarch64, false = manylinux_2_17_x86_64)"
+        description: "是否打包 ARM 架构版本 (true=ARM64, false=x86_64)"
         required: true
         default: "false"
+        type: string
 
 jobs:
   repackage:
     runs-on: ubuntu-latest
     steps:
-      - name: Print workflow inputs
+      # ========== 1. 打印用户输入的参数 ==========
+      - name: 打印输入的参数
         run: |
-          echo "plugin_author  = ${{ inputs.plugin_author }}"
-          echo "plugin_name    = ${{ inputs.plugin_name }}"
-          echo "plugin_version = ${{ inputs.plugin_version }}"
-          echo "platform_arm   = ${{ inputs.platform_arm }}"
+          echo "GitHub 仓库 = ${{ inputs.github_repo }}"
+          echo "Release 版本 = ${{ inputs.github_tag }}"
+          echo "插件文件名 = ${{ inputs.asset_name }}"
+          echo "ARM 架构 = ${{ inputs.platform_arm }}"
 
-      - name: Resolve platform
+      # ========== 2. 根据是否 ARM 确定 pip 平台和后缀 ==========
+      - name: 确定目标平台和文件后缀
         run: |
           if [ "${{ inputs.platform_arm }}" = "true" ]; then
             echo "PIP_PLATFORM=manylinux_2_17_aarch64" >> "$GITHUB_ENV"
             echo "PACKAGE_SUFFIX=offline-arm" >> "$GITHUB_ENV"
+            echo "目标平台: ARM64 (aarch64)"
           else
             echo "PIP_PLATFORM=manylinux_2_17_x86_64" >> "$GITHUB_ENV"
             echo "PACKAGE_SUFFIX=offline" >> "$GITHUB_ENV"
+            echo "目标平台: x86_64"
           fi
 
-      - name: Checkout repository
+      # ========== 3. 检出当前仓库（获取 plugin_repackaging.sh 脚本） ==========
+      - name: 检出代码仓库
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
+      # ========== 4. 设置 Python 环境 ==========
+      - name: 设置 Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Make plugin_repackaging.sh executable
+      # ========== 5. 给打包脚本添加执行权限 ==========
+      - name: 添加脚本执行权限
         run: chmod +x ./plugin_repackaging.sh
 
-      - name: Run plugin repackaging script
+      # ========== 6. 核心：从 GitHub Release 下载插件并重打包 ==========
+      - name: 从 GitHub Release 拉取插件并打包
         run: |
           PIP_MIRROR_URL=https://pypi.org/simple \
           ./plugin_repackaging.sh \
           -p ${{ env.PIP_PLATFORM }} \
           -s ${{ env.PACKAGE_SUFFIX }} \
-          market \
-          "${{ github.event.inputs.plugin_author }}" \
-          "${{ github.event.inputs.plugin_name }}" \
-          "${{ github.event.inputs.plugin_version }}"
+          github \
+          "${{ github.event.inputs.github_repo }}" \
+          "${{ github.event.inputs.github_tag }}" \
+          "${{ github.event.inputs.asset_name }}"
+        
+        # 如果插件仓库是私有的，需要取消下面两行的注释，并在仓库 Secrets 中添加 GH_TOKEN
+        # env:
+        #   GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
-      - name: Find repackaged artifact
+      # ========== 7. 查找生成的离线包文件 ==========
+      - name: 查找生成的离线包
         run: |
           ARTIFACT_PATH=$(find . -type f -name "*-${PACKAGE_SUFFIX}.difypkg" | head -n 1)
           if [ -z "$ARTIFACT_PATH" ]; then
-            echo "No *-${PACKAGE_SUFFIX}.difypkg artifact found!"
+            echo "错误：没有找到 *-${PACKAGE_SUFFIX}.difypkg 文件！"
             exit 1
           fi
-      
+          
+          echo "找到离线包: $ARTIFACT_PATH"
           echo "ARTIFACT_PATH=$ARTIFACT_PATH" >> $GITHUB_ENV
           echo "ARTIFACT_NAME=$(basename "$ARTIFACT_PATH")" >> $GITHUB_ENV
 
-      - name: Upload artifact
+      # ========== 8. 上传打包结果，供下载 ==========
+      - name: 上传离线包作为工作流产物
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_NAME }}
