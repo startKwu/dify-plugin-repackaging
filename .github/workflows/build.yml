@@ -55,7 +55,13 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
+      # ========== 4.5. 升级 pip 并清理缓存 ==========
+      - name: 升级 pip 和依赖工具
+        run: |
+          pip install --upgrade pip
+          pip install --upgrade setuptools wheel
+          # 清理 pip 缓存，避免旧的包索引
+          pip cache purge
       # ========== 5. 给打包脚本添加执行权限 ==========
       - name: 添加脚本执行权限
         run: chmod +x ./plugin_repackaging.sh
