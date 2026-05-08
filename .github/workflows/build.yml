@@ -58,11 +58,7 @@ jobs:
       # ========== 5. 给打包脚本添加执行权限 ==========
       - name: 添加脚本执行权限
         run: chmod +x ./plugin_repackaging.sh
-    # ========== 【新增步骤】5.5. 强制升级 Pip 到最新版 ==========
-      - name: 升级 Pip 到最新版本
-        run: |
-          python -m pip install --upgrade pip
-          pip --version  # 打印版本号，方便在日志中确认
+
       # ========== 6. 核心：从 GitHub Release 下载插件并重打包 ==========
       - name: 从 GitHub Release 拉取插件并打包
         run: |
