@@ -228,7 +228,8 @@ repackage(){
 
 	if python3 -m pip --version &> /dev/null 2>&1; then
 		PIP_CMD="python3 -m pip"
-		${PIP_CMD} --version
+		PIP_VERSION=$(${PIP_CMD} --version 2>&1 | awk '{print $2}')
+		echo "Detected pip: $PIP_VERSION"
 	elif command -v pip &> /dev/null && pip --version &> /dev/null 2>&1; then
 		PIP_CMD=pip
 	elif command -v pip3 &> /dev/null && pip3 --version &> /dev/null 2>&1; then
