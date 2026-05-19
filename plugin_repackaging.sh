@@ -237,6 +237,7 @@ repackage(){
 		exit 1
 	fi
 	echo "✓ Using pip: ${PIP_CMD}"
+	${PIP_CMD} --version
 
 	# ============================================
 	# Step 1: Detect Python and platform configuration
