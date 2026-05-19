@@ -228,6 +228,7 @@ repackage(){
 
 	if python3 -m pip --version &> /dev/null 2>&1; then
 		PIP_CMD="python3 -m pip"
+		${PIP_CMD} --version
 	elif command -v pip &> /dev/null && pip --version &> /dev/null 2>&1; then
 		PIP_CMD=pip
 	elif command -v pip3 &> /dev/null && pip3 --version &> /dev/null 2>&1; then
@@ -237,7 +238,7 @@ repackage(){
 		exit 1
 	fi
 	echo "✓ Using pip: ${PIP_CMD}"
-	${PIP_CMD} --version
+
 
 	# ============================================
 	# Step 1: Detect Python and platform configuration
